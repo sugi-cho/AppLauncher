@@ -1,0 +1,18 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <ui:ScrollView name="Container" />
+    <ui:VisualElement name="Parts" style="flex-grow: 1; display: none;">
+        <ui:Foldout text="Setting" name="ListenerSetting">
+            <ui:VisualElement name="ListenSetting" style="flex-direction: row; flex-shrink: 0;">
+                <ui:TextField picking-mode="Ignore" value="Message" name="Message" style="width: 40%;" />
+                <ui:EnumField type="AppControl+ProtocolType, Assembly-CSharp" name="ProtocolField" />
+                <ui:DropdownField index="-1" name="IPField" style="flex-grow: 1;" />
+                <ui:TextField picking-mode="Ignore" label="Port" value="7000" keyboard-type="NumberPad" name="PortField" style="flex-grow: 1;" />
+            </ui:VisualElement>
+            <ui:VisualElement name="ActionSetting" style="flex-grow: 1; flex-direction: row;">
+                <ui:TextField picking-mode="Ignore" label="Select File" name="FileField" style="flex-grow: 1;" />
+                <ui:Button text="Open" parse-escape-sequences="true" display-tooltip-when-elided="true" name="OpenButton" />
+                <ui:Toggle label="Use Kill Message" name="KillToggle" style="flex-direction: row-reverse; align-items: center;" />
+            </ui:VisualElement>
+        </ui:Foldout>
+    </ui:VisualElement>
+</ui:UXML>
