@@ -52,9 +52,12 @@ public class AppControl : MonoBehaviour
                     .Select(ip => ip.ToString());
                 ipField.choices.AddRange(ips);
                 ipField.value = listenerSetting.ip;
-                if (ipField.index < 0)
-                    ipField.index = 0;
                 ipField.RegisterValueChangedCallback(evt => listenerSetting.ip = evt.newValue);
+                if (ipField.index < 0)
+                {
+                    ipField.index = 0;
+                    listenerSetting.ip = ipField.value;
+                }
 
                 portField.value = listenerSetting.port.ToString();
                 portField.RegisterValueChangedCallback(evt =>
