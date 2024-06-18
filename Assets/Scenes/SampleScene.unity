@@ -276,12 +276,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   setting:
     settings:
-    - message: 
+    - message: test
       type: 0
-      ip: 
-      port: 0
-      filePath: 
-      useKillMessage: 0
+      port: 8888
+      filePath: D:\Desktop\ayu_koi_blueBack01.png
+    senderSetting:
+      message: test
+      type: 0
+      ip: 127.0.0.1
+      port: 8888
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
