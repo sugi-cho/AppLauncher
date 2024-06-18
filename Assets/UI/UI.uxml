@@ -13,6 +13,7 @@
                 <ui:TextField picking-mode="Ignore" value="Message" name="Message" style="width: 40%;" />
                 <ui:EnumField type="AppControl+ProtocolType, Assembly-CSharp" name="ProtocolField" />
                 <ui:IntegerField label="Local Port" value="8888" name="PortField" style="flex-grow: 1;" />
+                <ui:Button text="Reconnect" name="Reconnect" />
             </ui:VisualElement>
             <ui:VisualElement name="ActionSetting" style="flex-grow: 1; flex-direction: row;">
                 <ui:TextField picking-mode="Ignore" label="Select File" name="FileField" style="flex-grow: 1;" />

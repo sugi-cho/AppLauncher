@@ -11,6 +11,7 @@ using System.Diagnostics;
 using Debug = UnityEngine.Debug;
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 public class AppControl : MonoBehaviour
 {
@@ -21,12 +22,13 @@ public class AppControl : MonoBehaviour
     string FilePath => Path.Combine(Application.streamingAssetsPath, $"{typeof(Setting)}.json");
 
     [SerializeField] Setting setting;
-    bool _listening;
+    event Action onCancel;
 
     // Start is called before the first frame update
     void Start()
     {
         var json = "";
+
         if (!File.Exists(FilePath))
         {
             json = JsonUtility.ToJson(setting);
@@ -56,26 +58,37 @@ public class AppControl : MonoBehaviour
         {
             var ui = treeSource.CloneTree("ListenerSetting").Q("ListenerSetting");
 
+            var foldout = ui.Q<Foldout>("ListenerSetting");
             var messageField = ui.Q<TextField>("Message");
             var protocolField = ui.Q<EnumField>("ProtocolField");
             var portField = ui.Q<IntegerField>("PortField");
+            var reconnectButton = ui.Q<Button>("Reconnect");
 
             var fileNameField = ui.Q<TextField>("FileField");
             var openButton = ui.Q<Button>("OpenButton");
 
             {
-                messageField.value = listenerSetting.message;
-                messageField.RegisterValueChangedCallback(evt => listenerSetting.message = evt.newValue);
+                foldout.text = listenerSetting.ToString();
+                listenerSetting.onValueChanged += () => foldout.text = listenerSetting.ToString();
 
-                protocolField.value = listenerSetting.type;
-                protocolField.RegisterValueChangedCallback(evt => listenerSetting.type = (ProtocolType)evt.newValue);
+                messageField.value = listenerSetting.Message;
+                messageField.RegisterValueChangedCallback(evt => listenerSetting.Message = evt.newValue);
 
-                portField.value = listenerSetting.port;
-                portField.RegisterValueChangedCallback(evt => listenerSetting.port = evt.newValue);
+                protocolField.value = listenerSetting.Type;
+                protocolField.RegisterValueChangedCallback(evt => listenerSetting.Type = (ProtocolType)evt.newValue);
+
+                portField.value = listenerSetting.Port;
+                portField.RegisterValueChangedCallback(evt => listenerSetting.Port = evt.newValue);
+
+                reconnectButton.clicked += () =>
+                {
+                    onCancel?.Invoke();
+                    Debug.Log("cancel");
+                };
             }
             {
-                fileNameField.value = listenerSetting.filePath;
-                fileNameField.RegisterValueChangedCallback(evt => listenerSetting.filePath = evt.newValue);
+                fileNameField.value = listenerSetting.FilePath;
+                fileNameField.RegisterValueChangedCallback(evt => listenerSetting.FilePath = evt.newValue);
                 openButton.clicked += () =>
                 {
                     FileBrowser.ShowLoadDialog(fileName => fileNameField.value = fileName[0], () => { }, FileBrowser.PickMode.Files, title: "Select File");
@@ -142,34 +155,42 @@ public class AppControl : MonoBehaviour
 
     async Awaitable StartListenerAsync(ListenerSetting listenerSetting)
     {
+        Debug.Log($"start listen {listenerSetting}");
         await Awaitable.BackgroundThreadAsync();
-        Process process = null;
-        _listening = true;
+        var process = (Process)null;
+        var cancelAction = (Action)null;
 
-        if (listenerSetting.type == ProtocolType.UDP)
+        if (listenerSetting.Type == ProtocolType.UDP)
         {
             Debug.Log("wait for udp");
-            await ReceiveUDPAsync(listenerSetting.port);
+            await ReceiveUDPAsync(listenerSetting.Port);
         }
         else
         {
             Debug.Log("wait for tcp");
-            await ReceiveTCPAsync(listenerSetting.port);
+            await ReceiveTCPAsync(listenerSetting.Port);
         }
 
+        onCancel -= cancelAction;
         StartListenerAsync(listenerSetting).Cancel();
 
         async Awaitable ReceiveUDPAsync(int port)
         {
             using (var client = new UdpClient(port))
             {
-                while (_listening)
+                cancelAction = () => client.Close();
+                onCancel += cancelAction;
+                try
                 {
-                    var result = await client.ReceiveAsync();
-                    var buffer = result.Buffer;
-                    var message = System.Text.Encoding.UTF8.GetString(buffer, 0, buffer.Length);
-                    OnMessageReceive(message).Cancel();
+                    while (true)
+                    {
+                        var result = await client.ReceiveAsync();
+                        var buffer = result.Buffer;
+                        var message = System.Text.Encoding.UTF8.GetString(buffer, 0, buffer.Length);
+                        OnMessageReceive(message).Cancel();
+                    }
                 }
+                catch (Exception ex) { }
             }
         }
 
@@ -179,27 +200,32 @@ public class AppControl : MonoBehaviour
             var listener = new TcpListener(IPAddress.Any, port);
             listener.Start();
 
-            while (_listening)
+            cancelAction = () => listener.Stop();
+            onCancel += cancelAction;
+            try
             {
-                using (var client = await listener.AcceptTcpClientAsync())
-                using (var stream = client.GetStream())
+                while (true)
                 {
-                    var size = await stream.ReadAsync(buffer, 0, buffer.Length);
-                    var message = System.Text.Encoding.UTF8.GetString(buffer, 0, size);
-                    OnMessageReceive(message).Cancel();
+                    using (var client = await listener.AcceptTcpClientAsync())
+                    using (var stream = client.GetStream())
+                    {
+                        var size = await stream.ReadAsync(buffer, 0, buffer.Length);
+                        var message = System.Text.Encoding.UTF8.GetString(buffer, 0, size);
+                        OnMessageReceive(message).Cancel();
+                    }
                 }
             }
-            listener.Stop();
+            catch (Exception ex) { }
         }
 
         async Awaitable OnMessageReceive(string msg)
         {
             await Awaitable.MainThreadAsync();
-            if (msg == listenerSetting.message)
+            if (msg == listenerSetting.Message)
             {
                 if (process != null && !process.HasExited)
                     process.Kill();
-                process = Process.Start(listenerSetting.filePath);
+                process = Process.Start(listenerSetting.FilePath);
 
                 while (process.MainWindowHandle == (IntPtr)0)
                     await Awaitable.WaitForSecondsAsync(0.1f);
@@ -211,7 +237,7 @@ public class AppControl : MonoBehaviour
 
                 SetWindowPos(process.MainWindowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
             }
-            if (msg == listenerSetting.message + "-kill")
+            if (msg == listenerSetting.Message + "-kill")
             {
                 if (process != null && !process.HasExited)
                     process.Kill();
@@ -221,9 +247,9 @@ public class AppControl : MonoBehaviour
 
     private void OnDestroy()
     {
-        _listening = false;
         var json = JsonUtility.ToJson(setting);
         File.WriteAllText(FilePath, json);
+        onCancel?.Invoke();
     }
 
     public enum ProtocolType
@@ -240,10 +266,48 @@ public class AppControl : MonoBehaviour
     [Serializable]
     public class ListenerSetting
     {
-        public string message;
-        public ProtocolType type;
-        public int port;
-        public string filePath;
+        public string Message
+        {
+            get => message;
+            set
+            {
+                message = value;
+                onValueChanged?.Invoke();
+            }
+        }
+        [SerializeField] string message;
+        public ProtocolType Type
+        {
+            get => type; set
+            {
+                type = value;
+                onValueChanged?.Invoke();
+            }
+        }
+        [SerializeField] ProtocolType type;
+        public int Port
+        {
+            get => port; set
+            {
+                port = value;
+                onValueChanged?.Invoke();
+            }
+        }
+        [SerializeField] int port;
+        public string FilePath
+        {
+            get => filePath;
+            set
+            {
+                filePath = value;
+                onValueChanged?.Invoke();
+            }
+        }
+        [SerializeField] string filePath;
+
+        public override string ToString()
+            => $"{message},{type}: {port} => {filePath}";
+        public event Action onValueChanged;
     }
     [Serializable]
     public class SenderSetting
