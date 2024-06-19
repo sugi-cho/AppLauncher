@@ -8,10 +8,9 @@ using SimpleFileBrowser;
 using System.Net.Sockets;
 using System.Diagnostics;
 
-using Debug = UnityEngine.Debug;
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
+using System.Linq;
 
 public class AppControl : MonoBehaviour
 {
@@ -23,6 +22,8 @@ public class AppControl : MonoBehaviour
 
     [SerializeField] Setting setting;
     event Action onCancel;
+
+    string _logText;
 
     // Start is called before the first frame update
     void Start()
@@ -46,6 +47,7 @@ public class AppControl : MonoBehaviour
         var container = root.Q<ScrollView>("Container");
         var senderView = root.Q("TestMessageSend");
 
+        SetupLogUI();
         setting.settings.ForEach(setting =>
         {
             var ui = SetupSettingUI(setting);
@@ -77,13 +79,17 @@ public class AppControl : MonoBehaviour
                 protocolField.value = listenerSetting.Type;
                 protocolField.RegisterValueChangedCallback(evt => listenerSetting.Type = (ProtocolType)evt.newValue);
 
+                var ipList = Dns.GetHostAddresses(Dns.GetHostName())
+                    .Where(ip => ip.AddressFamily.Equals(AddressFamily.InterNetwork))
+                    .Select(ip => ip.ToString());
+                portField.label = string.Join(",", ipList) + ":";
                 portField.value = listenerSetting.Port;
                 portField.RegisterValueChangedCallback(evt => listenerSetting.Port = evt.newValue);
 
                 reconnectButton.clicked += () =>
                 {
                     onCancel?.Invoke();
-                    Debug.Log("cancel");
+                    _logText += "canceled\n";
                 };
             }
             {
@@ -116,28 +122,25 @@ public class AppControl : MonoBehaviour
             ipField.RegisterValueChangedCallback(evt => senderSetting.ip = evt.newValue);
             portField.RegisterValueChangedCallback(evt => senderSetting.port = evt.newValue);
 
-            ipField.RegisterValueChangedCallback(evt =>
-            {
-                if (!IPAddress.TryParse(evt.newValue, out var val))
-                    ipField.SetValueWithoutNotify(evt.previousValue);
-            });
-
             button.clicked += () =>
             {
-                var message = messageField.value;
-                var type = (ProtocolType)typeField.value;
-                var data = System.Text.Encoding.UTF8.GetBytes(message);
-                var port = portField.value;
-                if (IPAddress.TryParse(ipField.value, out var ip))
+                try
                 {
+                    var message = messageField.value;
+                    var type = (ProtocolType)typeField.value;
+                    var data = System.Text.Encoding.UTF8.GetBytes(message);
+                    var port = portField.value;
+                    var ip = Dns.GetHostAddresses(ipField.value)
+                    .Where(address => address.AddressFamily.Equals(AddressFamily.InterNetwork))
+                    .FirstOrDefault();
                     var remoteEP = new IPEndPoint(ip, port);
-                    Debug.Log(remoteEP.ToString());
                     switch (type)
                     {
                         case ProtocolType.UDP:
                             using (var client = new UdpClient())
                             {
                                 client.Send(data, data.Length, remoteEP);
+                                _logText += $"send udp message({message}) to {remoteEP}\n";
                             }
                             break;
                         case ProtocolType.TCP:
@@ -145,29 +148,51 @@ public class AppControl : MonoBehaviour
                             using (var stream = client.GetStream())
                             {
                                 stream.Write(data, 0, data.Length);
+                                _logText += $"send tcp message({message}) to {remoteEP}\n";
                             }
                             break;
                     }
                 }
+                catch (Exception ex) { _logText += ex.ToString() + "\n"; }
             };
+        }
+
+        void SetupLogUI()
+        {
+            var logField = root.Q<TextField>("LogField");
+            var copyButton = root.Q<Button>("CopyButton");
+            copyButton.clicked += () => GUIUtility.systemCopyBuffer = logField.value;
+            HandleLogUpdateAsync().Cancel();
+
+            async Awaitable HandleLogUpdateAsync()
+            {
+                var prev = _logText;
+                while (true)
+                {
+                    if (_logText != prev)
+                    {
+                        logField.value = _logText;
+                        prev = _logText;
+                    }
+                    await Awaitable.NextFrameAsync(destroyCancellationToken);
+                }
+            }
         }
     }
 
     async Awaitable StartListenerAsync(ListenerSetting listenerSetting)
     {
-        Debug.Log($"start listen {listenerSetting}");
+        _logText += $"start listening {listenerSetting}\n";
         await Awaitable.BackgroundThreadAsync();
         var process = (Process)null;
         var cancelAction = (Action)null;
 
         if (listenerSetting.Type == ProtocolType.UDP)
         {
-            Debug.Log("wait for udp");
             await ReceiveUDPAsync(listenerSetting.Port);
         }
         else
         {
-            Debug.Log("wait for tcp");
             await ReceiveTCPAsync(listenerSetting.Port);
         }
 
@@ -178,19 +203,24 @@ public class AppControl : MonoBehaviour
         {
             using (var client = new UdpClient(port))
             {
-                cancelAction = () => client.Close();
+                cancelAction = () =>
+                {
+                    client.Close();
+                    _logText += "UDPClient.Close\n";
+                };
                 onCancel += cancelAction;
                 try
                 {
                     while (true)
                     {
+                        _logText += "waiting UDPClient Receive...\n";
                         var result = await client.ReceiveAsync();
                         var buffer = result.Buffer;
                         var message = System.Text.Encoding.UTF8.GetString(buffer, 0, buffer.Length);
                         OnMessageReceive(message).Cancel();
                     }
                 }
-                catch (Exception ex) { }
+                catch (Exception ex) { _logText += ex + "\n"; }
             }
         }
 
@@ -199,13 +229,19 @@ public class AppControl : MonoBehaviour
             var buffer = new byte[4096];
             var listener = new TcpListener(IPAddress.Any, port);
             listener.Start();
+            _logText += "TCPListener.Start\n";
 
-            cancelAction = () => listener.Stop();
+            cancelAction = () =>
+            {
+                listener.Stop();
+                _logText += "TCPListener.Stop";
+            };
             onCancel += cancelAction;
             try
             {
                 while (true)
                 {
+                    _logText += "Listening TCPListener...\n";
                     using (var client = await listener.AcceptTcpClientAsync())
                     using (var stream = client.GetStream())
                     {
@@ -215,7 +251,7 @@ public class AppControl : MonoBehaviour
                     }
                 }
             }
-            catch (Exception ex) { }
+            catch (Exception ex) { _logText += ex + "\n"; }
         }
 
         async Awaitable OnMessageReceive(string msg)
@@ -233,7 +269,7 @@ public class AppControl : MonoBehaviour
                 IntPtr HWND_TOPMOST = new IntPtr(-1);
                 const uint SWP_NOSIZE = 0x0001;
                 const uint SWP_SHOWWINDOW = 0x0040;
-                Debug.Log("hWnd:" + process.MainWindowHandle);
+                _logText += $"SetWindowPos hWnd: {process.MainWindowHandle}\n";
 
                 SetWindowPos(process.MainWindowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
             }

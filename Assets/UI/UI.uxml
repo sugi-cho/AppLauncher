@@ -1,6 +1,12 @@
 <ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" engine="UnityEngine.UIElements" editor="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
-    <ui:ScrollView name="Container" />
-    <ui:VisualElement name="TestMessageSend" style="flex-grow: 0; flex-direction: row;">
+    <ui:ScrollView name="Container" style="flex-shrink: 0;" />
+    <ui:VisualElement name="LogView" style="flex-grow: 1;">
+        <ui:ScrollView>
+            <ui:TextField placeholder-text="Log Texts..." name="LogField" multiline="true" readonly="true" />
+        </ui:ScrollView>
+        <ui:Button text="Copy Log Text" name="CopyButton" />
+    </ui:VisualElement>
+    <ui:VisualElement name="TestMessageSend" style="flex-grow: 0; flex-direction: row; flex-shrink: 0;">
         <ui:TextField label="Send Test Message" placeholder-text="Message" name="MessageField" style="flex-grow: 1;" />
         <ui:EnumField value="Center" type="AppControl+ProtocolType, Assembly-CSharp" />
         <ui:TextField label="Remote IP" placeholder-text="127.0.0.1" name="IPField" is-delayed="true" value="127.0.0.1" style="flex-grow: 1;" />
