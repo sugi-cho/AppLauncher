@@ -6,8 +6,8 @@
         </ui:ScrollView>
         <ui:Button text="Copy Log Text" name="CopyButton" />
     </ui:VisualElement>
-    <ui:VisualElement name="TestMessageSend" style="flex-grow: 0; flex-direction: row; flex-shrink: 0;">
-        <ui:TextField label="Send Test Message" placeholder-text="Message" name="MessageField" style="flex-grow: 1;" />
+    <ui:VisualElement name="MessageSend" style="flex-grow: 0; flex-direction: row; flex-shrink: 0;">
+        <ui:TextField label="Message" placeholder-text="Message" name="MessageField" style="flex-grow: 1;" />
         <ui:EnumField value="Center" type="AppControl+ProtocolType, Assembly-CSharp" />
         <ui:TextField label="Remote IP" placeholder-text="127.0.0.1" name="IPField" is-delayed="true" value="127.0.0.1" style="flex-grow: 1;" />
         <ui:IntegerField label="Remote Port" value="8888" name="PortField" style="flex-grow: 1;" />

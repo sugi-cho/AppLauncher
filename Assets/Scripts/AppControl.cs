@@ -46,8 +46,8 @@ public class AppControl : MonoBehaviour
         var root = doc.rootVisualElement;
         var treeSource = doc.visualTreeAsset;
         var container = root.Q<ScrollView>("Container");
-        var senderView = root.Q("TestMessageSend");
 
+        SetupSenderUI(setting.senderSetting, root.Q("MessageSend"));
         SetupLogUI();
         setting.settings.ForEach(setting =>
         {
@@ -55,7 +55,6 @@ public class AppControl : MonoBehaviour
             container.Add(ui);
             StartListenerAsync(setting).Cancel();
         });
-        SetupSenderUI(setting.senderSetting);
 
         VisualElement SetupSettingUI(ListenerSetting listenerSetting)
         {
@@ -101,11 +100,17 @@ public class AppControl : MonoBehaviour
                     FileBrowser.ShowLoadDialog(fileName => fileNameField.value = fileName[0], () => { }, FileBrowser.PickMode.Files, title: "Select File");
                 };
             }
+            listenerSetting.senderSettings.ForEach(senderSetting =>
+            {
+                var ui = treeSource.CloneTree().Q("MessageSend");
+                SetupSenderUI(senderSetting, ui);
+                foldout.Add(ui);
+            });
 
             return ui;
         }
 
-        void SetupSenderUI(SenderSetting senderSetting)
+        void SetupSenderUI(SenderSetting senderSetting, VisualElement senderView)
         {
             var messageField = senderView.Q<TextField>("MessageField");
             var typeField = senderView.Q<EnumField>();
@@ -123,39 +128,7 @@ public class AppControl : MonoBehaviour
             ipField.RegisterValueChangedCallback(evt => senderSetting.ip = evt.newValue);
             portField.RegisterValueChangedCallback(evt => senderSetting.port = evt.newValue);
 
-            button.clicked += () =>
-            {
-                try
-                {
-                    var message = messageField.value;
-                    var type = (ProtocolType)typeField.value;
-                    var data = System.Text.Encoding.UTF8.GetBytes(message);
-                    var port = portField.value;
-                    var ip = Dns.GetHostAddresses(ipField.value)
-                    .Where(address => address.AddressFamily.Equals(AddressFamily.InterNetwork))
-                    .FirstOrDefault();
-                    var remoteEP = new IPEndPoint(ip, port);
-                    switch (type)
-                    {
-                        case ProtocolType.UDP:
-                            using (var client = new UdpClient())
-                            {
-                                client.Send(data, data.Length, remoteEP);
-                                _logText += $"send udp message({message}) to {remoteEP}\n";
-                            }
-                            break;
-                        case ProtocolType.TCP:
-                            using (var client = new TcpClient(ipField.value, port))
-                            using (var stream = client.GetStream())
-                            {
-                                stream.Write(data, 0, data.Length);
-                                _logText += $"send tcp message({message}) to {remoteEP}\n";
-                            }
-                            break;
-                    }
-                }
-                catch (Exception ex) { _logText += ex.ToString() + "\n"; }
-            };
+            button.clicked += () => SendSignal(senderSetting).Cancel();
         }
 
         void SetupLogUI()
@@ -179,6 +152,41 @@ public class AppControl : MonoBehaviour
                 }
             }
         }
+    }
+
+    async Awaitable SendSignal(SenderSetting senderSetting)
+    {
+        await Awaitable.BackgroundThreadAsync();
+        try
+        {
+            var message = senderSetting.message;
+            var type = senderSetting.type;
+            var data = System.Text.Encoding.UTF8.GetBytes(message);
+            var port = senderSetting.port;
+            var ip = Dns.GetHostAddresses(senderSetting.ip)
+            .Where(address => address.AddressFamily.Equals(AddressFamily.InterNetwork))
+            .FirstOrDefault();
+            var remoteEP = new IPEndPoint(ip, port);
+            switch (type)
+            {
+                case ProtocolType.UDP:
+                    using (var client = new UdpClient())
+                    {
+                        client.Send(data, data.Length, remoteEP);
+                        _logText += $"send udp message({message}) to {remoteEP}\n";
+                    }
+                    break;
+                case ProtocolType.TCP:
+                    using (var client = new TcpClient(senderSetting.ip, port))
+                    using (var stream = client.GetStream())
+                    {
+                        stream.Write(data, 0, data.Length);
+                        _logText += $"send tcp message({message}) to {remoteEP}\n";
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex) { _logText += ex.ToString() + "\n"; }
     }
 
     async Awaitable StartListenerAsync(ListenerSetting listenerSetting)
@@ -275,6 +283,7 @@ public class AppControl : MonoBehaviour
                 _logText += $"SetWindowPos hWnd: {process.MainWindowHandle}\n";
 
                 SetWindowPos(process.MainWindowHandle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_SHOWWINDOW);
+                listenerSetting.senderSettings.ForEach(setting => SendSignal(setting).Cancel());
             }
             if (msg == listenerSetting.Message + "-kill")
             {
@@ -344,6 +353,7 @@ public class AppControl : MonoBehaviour
             }
         }
         [SerializeField] string filePath;
+        public List<SenderSetting> senderSettings;
 
         public override string ToString()
             => $"{message},{type}: {port} => {filePath}";
