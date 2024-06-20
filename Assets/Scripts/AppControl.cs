@@ -24,6 +24,7 @@ public class AppControl : MonoBehaviour
     event Action onCancel;
 
     string _logText;
+    bool _listening;
 
     // Start is called before the first frame update
     void Start()
@@ -186,6 +187,7 @@ public class AppControl : MonoBehaviour
         await Awaitable.BackgroundThreadAsync();
         var process = (Process)null;
         var cancelAction = (Action)null;
+        _listening = true;
 
         if (listenerSetting.Type == ProtocolType.UDP)
         {
@@ -197,7 +199,8 @@ public class AppControl : MonoBehaviour
         }
 
         onCancel -= cancelAction;
-        StartListenerAsync(listenerSetting).Cancel();
+        if (_listening)
+            StartListenerAsync(listenerSetting).Cancel();
 
         async Awaitable ReceiveUDPAsync(int port)
         {
@@ -211,7 +214,7 @@ public class AppControl : MonoBehaviour
                 onCancel += cancelAction;
                 try
                 {
-                    while (true)
+                    while (_listening)
                     {
                         _logText += "waiting UDPClient Receive...\n";
                         var result = await client.ReceiveAsync();
@@ -239,7 +242,7 @@ public class AppControl : MonoBehaviour
             onCancel += cancelAction;
             try
             {
-                while (true)
+                while (_listening)
                 {
                     _logText += "Listening TCPListener...\n";
                     using (var client = await listener.AcceptTcpClientAsync())
@@ -285,6 +288,7 @@ public class AppControl : MonoBehaviour
     {
         var json = JsonUtility.ToJson(setting);
         File.WriteAllText(FilePath, json);
+        _listening = false;
         onCancel?.Invoke();
     }
 
